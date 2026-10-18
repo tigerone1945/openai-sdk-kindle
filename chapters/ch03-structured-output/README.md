@@ -4,7 +4,7 @@
 
 ## 1. Kindle対応章
 
-第3章「Structured Outputで分析結果を安定させる」（Zenn第3回：`source/zenn/zenn03.md`）
+本書の第3章「Structured Outputで分析結果を安定させる」に対応します。この章の完全なソースコードは `src/` にあります（ファイルの案内は `src/README.md`）。実行手順は、この README に記載しています。
 
 ## 2. この章で追加するCapability
 
@@ -21,7 +21,7 @@
 ## 4. この章で確認するFile
 
 - `src/main.py`
-- `src/snippets/`（記事の抜粋 4 件。一覧は `src/README.md`）
+- `src/snippets/`（本文の説明用の抜粋 4 件。一覧は `src/README.md`）
 
 ## 5. 実行方法
 

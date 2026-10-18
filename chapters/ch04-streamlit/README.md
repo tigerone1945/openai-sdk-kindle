@@ -4,7 +4,7 @@
 
 ## 1. Kindle対応章
 
-第4章「StreamlitでAIデータ分析AgentのWeb画面を作る」（Zenn第4回：`source/zenn/zenn04.md`）
+本書の第4章「StreamlitでAIデータ分析AgentのWeb画面を作る」に対応します。この章の完全なソースコードは `src/` にあります（ファイルの案内は `src/README.md`）。実行手順は、この README に記載しています。
 
 ## 2. この章で追加するCapability
 
@@ -40,7 +40,7 @@ uv run streamlit run chapters/ch04-streamlit/src/app.py
 - 金額が、第2章の正解（pandas で直接集計した値）と一致する
 - 入力が空のとき、「分析したい内容を入力してください。」の警告が出て、Agent は呼ばれない
 
-文面は実行ごとに変わる。実行例は [expected_output/example_run.txt](expected_output/example_run.txt)、画面は `../../05_figures/ch04_screen_*.png` を参照。
+文面は実行ごとに変わる。実行例は [expected_output/example_run.txt](expected_output/example_run.txt)、画面は、[起動直後の画面](images/ch04_screen_01_initial.png)と、[分析結果の表示](images/ch04_screen_02_result.png)を参照。
 
 ## 7. 次章で変更される点
 

@@ -4,7 +4,7 @@
 
 ## 1. Kindle対応章
 
-第2章「Function ToolsとpandasでCSVを分析する」（Zenn第2回：`source/zenn/zenn02.md`）
+本書の第2章「Function ToolsとpandasでCSVを分析する」に対応します。この章の完全なソースコードは `src/` にあります（ファイルの案内は `src/README.md`）。実行手順は、この README に記載しています。
 
 ## 2. この章で追加するCapability
 
@@ -21,7 +21,7 @@
 ## 4. この章で確認するFile
 
 - `src/main.py`
-- `src/snippets/`（記事の抜粋 5 件。一覧は `src/README.md`）
+- `src/snippets/`（本文の説明用の抜粋 5 件。一覧は `src/README.md`）
 
 ## 5. 実行方法
 
