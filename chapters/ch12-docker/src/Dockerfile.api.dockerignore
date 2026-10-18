@@ -1,0 +1,10 @@
+*
+!pyproject.toml
+!uv.lock
+!chapters/ch11-fastapi/src/agent_service.py
+!chapters/ch11-fastapi/src/service.py
+!chapters/ch11-fastapi/src/api/
+!chapters/ch09-multitable/src/scripts/normalize_sales_db.py
+!chapters/ch12-docker/src/init_db.py
+!data/raw/ai_agent_practice_sales.csv
+**/__pycache__

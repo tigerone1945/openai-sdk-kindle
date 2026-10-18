@@ -1,0 +1,31 @@
+# テスト(LLMなし。36件。先に第9章の取り込みでDBを作らなくてよい:各テストが一時DBを作る)
+$ uv run --with pytest --with pytest-asyncio pytest chapters/ch11-fastapi/tests -q
+....................................                                     [100%]
+36 passed
+
+# 実サーバーでの通し確認(2026-10-12。値は実行ごとに変わる)
+health: {'status': 'ok'}
+1 analysis: 200 completed category_sales | カテゴリ別の売上金額を集計しました。…
+  X-Request-ID == request_id: True
+2 follow-up(same session): 200 最も売上が大きいカテゴリはIT機器で、売上額は11,651,680円です。
+3 approval: 200 approval_required {"approval_id": "41e1…", "items": [{"tool": "create_review_request", "arguments": {"order_id": "O0001", "reason": "高額注文の確認"}}]}
+  review_requests before: 0
+  approve: 200 completed review_request | 注文 O0001 をレビュー依頼として登録しました。
+  review_requests after: [('O0001',)]
+  approve again: 404 approval_not_found
+4 reject: 200 レビュー依頼の登録を試みましたが、…登録できませんでした。 | O0002 registered: 0
+5 out_of_scope: 422 out_of_scope
+6 validation: 422 validation_error 不正な項目: question, session_id
+7 concurrency: 1 request=9.2s, 3 simultaneous=14.7s, statuses=[200, 200, 200]
+
+# 監査ログ(承認の依頼・承認・却下・実行が、approval_id つきで残る)
+approval_requested / approved / executed      (O0001。approval_id が一致)
+approval_requested / rejected                 (O0002。executed なし)
+
+# analysis_type の集計(10種類の質問 × 3回 = 30回)
+Literal 化の前:13種類の値(同じ意図でも揺れる。例: sales_by_customer_type / customer_type_sales)
+Literal 化の後: 8種類(すべて候補内。同じ質問では毎回同じ値)
+
+# 非同期の確認(LLMなし。解析は0.6秒かかる擬似処理)
+await で待つ      : /health は 0.11 秒で応答 / 3つ同時の解析は 0.61 秒
+同期処理でブロック: /health は 0.61 秒まで応答なし / 3つ同時の解析は 1.82 秒

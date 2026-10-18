@@ -1,0 +1,71 @@
+name: ai-sales-agent-ch16
+
+# 評価を手元で流すための、最小の構成(db + migrate + api。ui は無い)。
+# パスワードは .env に書かず、実行のたびに作って渡す:
+#   export DB_OWNER_PASSWORD=$(openssl rand -hex 12) DB_RO_PASSWORD=$(openssl rand -hex 12) DB_RW_PASSWORD=$(openssl rand -hex 12)
+#   docker compose -f chapters/ch16-observability-evaluation/src/compose.yaml --env-file .env up -d --build --wait
+
+x-api-build: &api-build
+  build:
+    context: ../../..
+    dockerfile: chapters/ch16-observability-evaluation/src/Dockerfile.api
+  image: ai-sales-agent-api:ch16
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  db:
+    image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+    environment:
+      POSTGRES_USER: app_owner
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:?DB_OWNER_PASSWORD が未設定です}
+      POSTGRES_DB: ai_agent
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql, /var/lib/postgresql/data]   # 使い捨て(評価が終われば捨てる)
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+
+  migrate:
+    <<: [*api-build, *hardening]
+    command: ["python", "migrate.py"]
+    environment:
+      DB_HOST: db
+      DB_NAME: ai_agent
+      DB_OWNER_USER: app_owner
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?}
+      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?}
+      DB_RW_PASSWORD: ${DB_RW_PASSWORD:?}
+      SEED_DEMO_DATA: "true"
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    <<: [*api-build, *hardening]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY が未設定です}
+      DB_BACKEND: postgres
+      DB_HOST: db
+      DB_NAME: ai_agent
+      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?}
+      DB_RW_PASSWORD: ${DB_RW_PASSWORD:?}
+      OPENAI_STORE_RESPONSES: ${OPENAI_STORE_RESPONSES:-false}   # true: OpenAI 側に保存させる(比較実験用)
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    ports: ["127.0.0.1:8000:8000"]

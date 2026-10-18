@@ -1,0 +1,9 @@
+{
+  "analysis_type": "category_sales",
+  "result_summary": "カテゴリ別売上を分析しました。",
+  "key_findings": [
+    "売上上位カテゴリがあります",
+    "カテゴリ間で売上差があります"
+  ],
+  "next_action": "上位カテゴリの商品別内訳を確認してください"
+}

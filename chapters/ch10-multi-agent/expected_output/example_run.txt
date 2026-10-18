@@ -1,0 +1,30 @@
+# テスト(LLMなし。9件。先に第9章の取り込みでDBを作る)
+$ uv run python chapters/ch09-multitable/src/scripts/normalize_sales_db.py
+$ uv run --with pytest pytest chapters/ch10-multi-agent/tests -q
+.........                                                                [100%]
+9 passed
+
+# Agent の構成
+売上分析Manager      ['check_data_quality', 'analyze_sales_data', 'create_business_insight', 'create_review_request']
+Data Quality Agent   ['list_tables', 'inspect_table', 'suggest_join', 'validate_join', 'preview_join']
+Sales Analyst Agent  ['get_sales_summary', 'get_sales_by_category', 'get_sales_by_region', 'get_sales_by_customer_type', 'get_review_orders']
+Business Insight Agent []
+
+# Single(第9章)と Multi(第10章)の比較(各3回。2026-10-12。値は実行ごとに変わる)
+# numbers_ok は「指定した数値が回答に含まれるか」だけを見ている。合計などの派生値の正しさは対象外(第11章で測り直し)
+質問A「カテゴリ別の売上を教えてください。」
+  Single  time=[7.3, 5.1, 5.7]s   model_calls=[3, 3, 3]    tokens=[2231, 2212, 2224]   numbers_ok=3/3
+  Multi   time=[9.5, 19.2, 10.6]s model_calls=[5, 10, 5]   tokens=[3069, 6944, 2973]   numbers_ok=3/3
+質問B「顧客種別別の売上を出す前に、結合が安全か確認してください。そのうえで売上と、業務上の示唆も教えてください。」
+  Single  time=[10.5, 11.6, 11.7]s model_calls=[5, 6, 5]   tokens=[5079, 7813, 6146]   numbers_ok=3/3
+  Multi   time=[26.5, 31.1, 28.7]s model_calls=[11, 13, 12] tokens=[9020, 11044, 10142] numbers_ok=3/3
+
+# Manager 経由の承認フロー(自動で承認/却下した場合)
+Q: 注文 O0001 をレビュー対象として登録してください。理由は高額注文の確認です。
+  承認対象: create_review_request {'order_id': 'O0001', 'reason': '高額注文の確認'}
+  -> 注文 O0001 をレビュー依頼として登録しました。      (監査ログ: approval_requested / approved / executed)
+Q: 注文 O0002 をレビュー対象として登録してください。理由は確認のためです。
+  承認対象: create_review_request {'order_id': 'O0002', 'reason': '確認のため'}
+  -> レビュー登録を実行できませんでした。              (監査ログ: approval_requested / rejected。executedなし)
+Q: customersとproductsを結合して、顧客と商品の組み合わせを見せて
+  -> 許可されたJoinがないため、直接結合できません。

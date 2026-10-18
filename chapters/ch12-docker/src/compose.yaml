@@ -1,0 +1,67 @@
+name: ai-sales-agent
+
+# 実行(リポジトリのルートから):
+#   docker compose -f chapters/ch12-docker/src/compose.yaml --env-file .env up --build
+# Compose は、既定では compose.yaml のあるフォルダーの .env を読む。リポジトリ直下の .env は --env-file で渡す。
+
+x-api-build: &api-build
+  build:
+    context: ../../..
+    dockerfile: chapters/ch12-docker/src/Dockerfile.api
+  image: ai-sales-agent-api:local
+
+x-hardening: &hardening
+  read_only: true            # ルートFSは書き込めない。書き込めるのは、明示した場所(volume / tmpfs)だけ。
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  # 初回だけDBを作って終わる(ジョブ)。api は、これが成功してから起動する。
+  init:
+    <<: [*api-build, *hardening]
+    command: ["python", "init_db.py"]
+    volumes: ["app-data:/app/data"]
+    restart: "no"
+
+  api:
+    <<: [*api-build, *hardening]
+    environment:
+      # 実行時に渡す。イメージには入れない。未設定なら、起動前に分かるエラーで止める。
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY が未設定です。.env に設定し、--env-file .env を付けてください}
+    volumes: ["app-data:/app/data"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    # 認証がない(第11章)ので、手元のマシンからだけ繋げる。LANには公開しない。
+    ports: ["127.0.0.1:8000:8000"]
+
+  ui:
+    build:
+      context: ../../..
+      dockerfile: chapters/ch12-docker/src/Dockerfile.ui
+    image: ai-sales-agent-ui:local
+    <<: *hardening
+    environment:
+      # コンテナの中の localhost は、そのコンテナ自身。別のコンテナには、サービス名で繋ぐ。
+      API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy   # 起動しただけでなく、/health に応答してから
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    ports: ["127.0.0.1:8501:8501"]
+
+# 状態(DB・会話履歴・監査ログ)は、ここだけ。イメージとコンテナは、消して作り直せる。
+volumes:
+  app-data:

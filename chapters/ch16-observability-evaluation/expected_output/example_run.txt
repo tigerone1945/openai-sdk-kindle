@@ -1,0 +1,48 @@
+# 第16章 実機の記録(2026-10-13 JST、東京リージョン、NAT あり)
+
+[評価: ローカル(Docker Compose、db + migrate + api)]
+12 ケース × 3 回: overall-001 が 1 回失敗する回あり(最初の 1 回実行では overall-001 と cancellation-001 が失敗)
+20 回(store 既定): overall-001 75% / cancellation-001 90%
+失敗の中身: 「キャンセル件数は集計できません。」(Tool があるのに)/ 関東を省いた地域別売上 / 全体のまとめでキャンセル件数に触れない(すべて HTTP 200)
+store の A/B(3 ケース × 20 回): store=False  overall 90% region 80% cancellation 90% / 既定  overall 85% region 80% cancellation 80% → 差は検出できず
+
+[OpenAI 側の保存(実際に OpenAI を呼ぶ検査 4 件、対照つき)]
+trace_include_sensitive_data=false: function スパンの input / output が消える(true では {"a":2,"b":3} と 5)
+質問文: どちらの設定でも、トレースには出ない(response_id のみ)
+既定: client.responses.retrieve(response_id) と input_items で、質問文が取得できた → store=False で NotFound
+
+[AWS: 土台]
+1 回目の apply: 終了コード 137(強制終了)。S3 のロックが残り、RDS が state に無いまま AWS に存在 → force-unlock と terraform import で復旧
+import 後の差分: engine_version "16.13" → "16"(次のメンテナンス枠まで保留)/ apply 後の plan: 差分なし(0)
+評価(AWS、v3、12 × 3): 97.2%(overall-001 が不安定)
+Logs Insights(30 分): request_completed 46 / analysis_completed 30 / analysis_rejected 9 / approval_required 6、p95 ≒ 10.8 秒
+
+[障害の演習(v3): DB の ro・rw のパスワードを間違った値に差し替え]
+22 秒 差し替え・再デプロイ開始 / 113 秒 最初の失敗 / 196 秒 ECS のデプロイ = COMPLETED / /health=200 /ready=503
+197 秒 アラーム analysis-failed(最初の失敗から 84 秒)/ 340 秒 アラーム alb-target-5xx(227 秒)
+利用者のリクエスト 142 件、失敗 91 件。すべて 500 internal_error(設計は 503)
+CloudWatch: OperationalError 91 件("password authentication failed for user agent_rw")→ 第15章の状態の保存先に、DB 障害の翻訳が無かった
+357 秒 元の値(AWSPREVIOUS)に戻す / 復旧(再デプロイ開始から 80 秒後に最初の成功)/ アラーム復旧 782 秒・989 秒
+
+[修正版 v4]
+壊れたデプロイ: ECS=COMPLETED, /health=200, /ready=503, POST /analysis → 503 database_unavailable
+smoke 評価(data・approval・blocked): 0/3 → 元に戻すと 3/3
+
+[Production Readiness(スクリプト、v4)]
+PASS 13 / FAIL 0 / WARN 1(DB の削除保護・Multi-AZ)/ MANUAL 3(通知の購読者・デプロイ後の評価・回帰評価の基準)
+
+[パスワードのローテーション(ro・rw)]
+1 回目: 43 リクエスト中 1 件失敗(503)/ 2 回目: 48 リクエスト中 0 件。マイグレーションのタスク ≒ 70 秒、再デプロイ ≒ 150 秒
+
+[ロールバック]
+手動(v4 → v2): ECS 12:28:30 → 12:31:26(2 分 56 秒)。terraform apply は戻らず(12:47 に中断)。plan は「変更なし」
+起動できない版(存在しないタグ): 約 12:58 に更新 → 13:00〜13:12 CannotPullContainerError を繰り返す → 13:15:38 deployment failed: tasks failed to start / rolling back → 13:16:11 steady state(約 17 分で自動ロールバック)
+  その間の /health 167 回(5 秒ごと): 200 以外 0 回
+
+[テスト]
+第16章 73 passed, 4 skipped(live。RUN_LIVE_TESTS=1 で 4 passed)。第8〜16章の合計 364(9+21+9+36+33+126+22+35+73)
+
+[destroy]
+69 個。約 32 分(NAT の削除 15 分、RDS の削除 16 分以上)。destroy 後: state 0 件 / RDS 0 / NAT 0 / EIP 0 / ALB 0 / 非デフォルト VPC 0 / ECS 0 / ECR(本書) 0 / ログ(本書) 0 / Secrets Manager 0 / IAM ロール(本書) 0 / アラーム 0 / ダッシュボード 0 / SNS 0 / Cloud Map 0
+state 用 S3 バケット(agentcore-kindle-tfstate-<アカウントID>)は残してある
+稼働時間の概算: 約 2.5 時間 × 約 $0.17/時 ≒ $0.45(請求への反映は約 1 日後)

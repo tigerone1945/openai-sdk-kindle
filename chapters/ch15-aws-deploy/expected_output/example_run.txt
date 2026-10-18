@@ -1,0 +1,44 @@
+# 第15章 実機の記録(2026-10-13 JST、東京リージョン)
+# 一連の流れ: apply(土台、台数 0) → put_secrets → deploy_images → run_migrate → apply(台数 2/1) → 測定 → destroy
+
+[v1: 第13章のコードそのまま]
+apply 7分30秒(56 個)
+ECR push: 回線によりタイムアウト。1 回目は 2 層目以降で失敗し、再実行で成功(deploy_images.sh が、ECR に入ったかで成否を決める)
+run_migrate: 終了コード 0 / 適用した版: 0001_schema, 0002_privileges / デモデータ customers 10 / products 12 / orders 300
+POST /analysis → 500 internal_error
+  CloudWatch: sqlite3.OperationalError: unable to open database file (SQLiteSession(…, "data/conversations.db"))
+  原因: Fargate の /app/data は root 所有の空ボリューム。非 root(uid 10001)のアプリは書けない(手元の Docker の名前付きボリュームは、イメージ側の所有者を引き継ぐので動く)
+v1b(Dockerfile に VOLUME ["/app/data"] の 1 行を足した版)で E2E: completed(13.6 秒)
+2 台で承認フロー 10 回: 承認が通った 6 / 404 approval_not_found 4
+再デプロイ(全タスク入れ替え)後の承認: 404 approval_not_found
+
+[v2: 状態を RDS へ(会話履歴 = SQLAlchemySession、承認待ち = pending_approvals、監査ログ = 標準出力)]
+run_migrate: 適用した版: 0003_state(2 回目の実行は「最新です」、デモデータは「orders にデータがあるため入れません」)
+2 台で承認フロー 10 回: 承認が通った 10 / 失敗 0
+再デプロイ前後の DB: sessions=12 messages=46 approvals=1 → 全タスク入れ替え後も sessions=12 messages=46 approvals=1
+再デプロイ後に、その承認待ちを reject: 200 completed
+api タスクを 1 台 stop-task(正常停止): 90 秒間の /health 81 回、すべて 200。ECS が 2 台に戻した
+UI(Streamlit)から質問 → api(Cloud Map の名前 api.ai-agent-practice.internal:8000) → RDS: 回答が表示された(05_figures/ch15_screen_01_ui_on_aws.png)
+
+[NAT なし(enable_nat_gateway=false)]
+plan: 0 to add, 2 to change, 3 to destroy(EIP・NAT Gateway・ルート)。サービス 2 つが公開サブネット + 公開 IP に変わる
+apply 2分3秒。E2E: completed
+タスクの公開 IP の 8000 へ直接(ALB を通さない): 2 台とも、接続できない(タイムアウト)
+
+[シークレットの所在]
+Secrets Manager の値(OpenAI キー 164 文字、DB パスワード 48 文字 × 2、RDS マスター)を、S3 の state で検索: すべて 0 件
+タスク定義(api)の environment: DB_BACKEND, DB_HOST, DB_NAME のみ。secrets: DB_RO_PASSWORD, DB_RW_PASSWORD, OPENAI_API_KEY(DB_OWNER_* は渡していない)
+タスクロール(api)の権限: アタッチ 0 / インライン 0
+
+[plan の収束(冪等性)]
+初回: apply 後の plan が差分あり(終了コード 2)→ ECS が補う既定値(hostPort, 空の add, systemControls, volumesFrom)と、サービス検出の空ブロックが原因
+修正後: apply 後の plan は差分なし(終了コード 0)
+
+[監査ログ(CloudWatch /ecs/ai-agent-practice/api)]
+{"at": "2026-10-12T23:58:51", "event": "approval_requested", "approval_id": "e33ae601…", "tool": "create_review_request", "arguments": {"order_id": "O0001", "reason": "割引率の確認"}}
+
+[destroy]
+53 個。4分32秒。destroy 後: state 0 件 / RDS 0 / NAT 0 / EIP 0 / ALB 0 / 非デフォルト VPC 0 / ECS 0 / ECR(本書) 0 / ログ(本書) 0 / Secrets Manager 0 / IAM ロール(本書) 0 / Cloud Map(本書) 0
+(別の既存リソース: ターゲットグループ 1、Cloud Map 名前空間 4 は、本書のものではない)
+
+[テスト] 35 passed(18 + 17。AWS 認証情報と TEST_PG_URL があるとき)。第8〜15章の合計 291 件(ch8:9 ch9:21 ch10:9 ch11:36 ch12:33 ch13:126 ch14:22 ch15:35)

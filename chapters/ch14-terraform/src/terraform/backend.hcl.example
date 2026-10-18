@@ -1,0 +1,8 @@
+# コピーして backend.hcl を作り、bucket を、あなたが作った state 用バケットの名前に書き換える(backend.hcl は Git に入れない)。
+#   cp backend.hcl.example backend.hcl   # README の手順では、sed で bucket を差し替える
+# バケットは、scripts/create_state_bucket.sh(第14章)であなた自身の AWS アカウントに作る。名前は全 AWS で一意で、あなたが決める。
+#   名前に自分のAWSアカウントIDを含めると、一意になりやすい(例: 「...-<AWSアカウントID>」の部分を、実際の12桁に置き換える)。実際のIDは、このファイルに書かない
+# key は章ごとに別にする(第14・15・16章の state を混ぜない)。変えない。
+bucket = "REPLACE_WITH_YOUR_STATE_BUCKET_NAME"
+key    = "ch14/terraform.tfstate"
+region = "ap-northeast-1"

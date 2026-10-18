@@ -1,0 +1,24 @@
+# 取り込み
+$ uv run python chapters/ch08-sqlite/src/scripts/import_csv_to_sqlite.py
+300件をdata/sales.dbへ取り込みました。
+
+# テスト(LLMなし。9件)
+$ uv run --with pytest pytest chapters/ch08-sqlite/tests -q
+.........                                                                [100%]
+9 passed
+
+# Agent の通し実行(文面は実行ごとに変わる)
+Q: カテゴリ別の売上を分析して
+   IT機器とオフィス家具が売上の中心で、周辺機器・ストレージとの差が大きい構成です。
+Q: 注文 O0001 をレビュー対象として登録してください。理由は高額注文の確認です。
+  承認対象: create_review_request {'order_id': 'O0001', 'reason': '高額注文の確認'}
+   注文 O0001 をレビュー依頼として登録しました。
+Q: (同じ依頼をもう一度)
+  承認対象: create_review_request {'order_id': 'O0001', 'reason': '高額注文の確認'}
+   注文O0001はレビュー対象として既に登録済みのため、追加登録されませんでした。
+
+# カテゴリ別売上(CSV版と完全に一致)
+IT機器: 11,651,680円
+オフィス家具: 11,329,340円
+周辺機器: 2,879,995円
+ストレージ: 2,437,680円

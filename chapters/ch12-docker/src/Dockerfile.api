@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+# ビルドの文脈(context)はリポジトリのルート。compose.yaml から指定する。
+
+# タグだけだと、同じDockerfileでも取得する時期で中身が変わる(3.13.8 → 3.13.16)。ダイジェストで固定する。
+FROM python:3.13.16-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never
+
+WORKDIR /app
+
+# 1. 依存(変わりにくい)を先に入れる。コードだけの変更では、この層のキャッシュが効く。
+RUN pip install --no-cache-dir uv==0.11.16
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --only-group api
+
+# 2. アプリ(変わりやすい)。アプリのコードは第11章と同一で、コンテナ化のために変更していない。
+COPY chapters/ch11-fastapi/src/agent_service.py chapters/ch11-fastapi/src/service.py ./
+COPY chapters/ch11-fastapi/src/api ./api
+COPY chapters/ch09-multitable/src/scripts/normalize_sales_db.py ./scripts/normalize_sales_db.py
+COPY chapters/ch12-docker/src/init_db.py ./init_db.py
+
+# 3. 初期データの元(読み取り専用の素材)。業務データ(DB・会話履歴)はイメージに入れない。
+COPY data/raw/ai_agent_practice_sales.csv /app/seed/ai_agent_practice_sales.csv
+
+# 4. 一般ユーザーで動かす。データの置き場(/app/data)だけが書き込める。
+RUN useradd --system --uid 10001 --home-dir /nonexistent app \
+    && mkdir -p /app/data \
+    && chown app:app /app/data
+USER app
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+EXPOSE 8000
+
+# exec形式は1行で書く(複数行にするとビルドが構文エラーになる)。シグナルがuvicornへ直接届く。
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

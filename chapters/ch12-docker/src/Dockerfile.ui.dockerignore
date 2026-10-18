@@ -1,0 +1,5 @@
+*
+!pyproject.toml
+!uv.lock
+!chapters/ch11-fastapi/src/ui/
+**/__pycache__

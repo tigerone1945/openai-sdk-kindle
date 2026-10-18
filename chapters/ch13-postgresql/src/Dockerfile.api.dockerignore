@@ -1,0 +1,14 @@
+*
+!pyproject.toml
+!uv.lock
+!chapters/ch13-postgresql/src/agent_service.py
+!chapters/ch13-postgresql/src/catalog.py
+!chapters/ch13-postgresql/src/db.py
+!chapters/ch13-postgresql/src/repository.py
+!chapters/ch13-postgresql/src/migrate.py
+!chapters/ch13-postgresql/src/seed.py
+!chapters/ch13-postgresql/src/migrations/
+!chapters/ch13-postgresql/src/api/
+!chapters/ch11-fastapi/src/service.py
+!data/raw/ai_agent_practice_sales.csv
+**/__pycache__

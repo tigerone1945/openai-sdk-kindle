@@ -1,0 +1,97 @@
+name: ai-sales-agent
+
+# 実行(リポジトリのルートから。.env に OPENAI_API_KEY と DB_*_PASSWORD を設定しておく):
+#   docker compose -f chapters/ch13-postgresql/src/compose.yaml --env-file .env up --build
+
+x-api-build: &api-build
+  build:
+    context: ../../..
+    dockerfile: chapters/ch13-postgresql/src/Dockerfile.api
+  image: ai-sales-agent-api:ch13
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  db:
+    image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+    environment:
+      POSTGRES_USER: ${DB_OWNER_USER:-app_owner}
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:?DB_OWNER_PASSWORD が未設定です。.env に設定してください}
+      POSTGRES_DB: ${DB_NAME:-ai_agent}
+    volumes: ["pg-data:/var/lib/postgresql/data"]
+    # ポートは公開しない。Composeのネットワークの中(db:5432)からだけ繋がる。
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
+    # PostgreSQLの起動(所有者の変更・ユーザーの切り替え)に必要な最小限だけ残す。
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+
+  # スキーマ・役割・(任意で)デモデータを整えて終わるジョブ。DDLができる管理者の資格情報は、ここだけが持つ。
+  migrate:
+    <<: [*api-build, *hardening]
+    command: ["python", "migrate.py"]
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-ai_agent}
+      DB_OWNER_USER: ${DB_OWNER_USER:-app_owner}
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?}
+      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?DB_RO_PASSWORD が未設定です}
+      DB_RW_PASSWORD: ${DB_RW_PASSWORD:?DB_RW_PASSWORD が未設定です}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}   # 本番では false(デモデータは入れない)
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    <<: [*api-build, *hardening]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY が未設定です。.env に設定し、--env-file .env を付けてください}
+      DB_BACKEND: postgres
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-ai_agent}
+      # 読み取り用と書き込み用の資格情報だけ。DDLができる管理者の資格情報は渡さない。
+      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?}
+      DB_RW_PASSWORD: ${DB_RW_PASSWORD:?}
+    volumes: ["app-data:/app/data"]   # 会話履歴・承認待ち・監査ログ(まだファイル。次章以降)
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      # /ready は、DBに実際に繋がるかを確かめる。uiは、DBまで使える状態のapiを待つ。
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    ports: ["127.0.0.1:8000:8000"]
+
+  ui:
+    build:
+      context: ../../..
+      dockerfile: chapters/ch12-docker/src/Dockerfile.ui   # 第12章のまま(画面は変わらない)
+    image: ai-sales-agent-ui:local
+    <<: *hardening
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    ports: ["127.0.0.1:8501:8501"]
+
+volumes:
+  pg-data:    # 業務データ(PostgreSQL)
+  app-data:   # 会話履歴・承認待ち・監査ログ

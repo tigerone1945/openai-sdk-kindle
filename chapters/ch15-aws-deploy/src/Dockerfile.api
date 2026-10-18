@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+# 第13章の Dockerfile.api との違い:
+#   - agent_service.py(監査ログを標準出力へ出せる)と service.py(状態を DB へ)は、第15章のもの
+#   - migrations/ は、0003(状態のテーブル)を足した第15章のもの
+#   - /app/data を作らない。状態をタスクのファイルに置かないので、書き込める場所は /tmp だけでよい
+FROM python:3.13.16-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    AUDIT_LOG_DEST=stdout
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv==0.11.16
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --only-group api
+
+COPY chapters/ch15-aws-deploy/src/agent_service.py chapters/ch15-aws-deploy/src/service.py ./
+COPY chapters/ch13-postgresql/src/catalog.py chapters/ch13-postgresql/src/db.py \
+     chapters/ch13-postgresql/src/repository.py chapters/ch13-postgresql/src/migrate.py \
+     chapters/ch13-postgresql/src/seed.py ./
+COPY chapters/ch15-aws-deploy/src/migrations ./migrations
+COPY chapters/ch13-postgresql/src/api ./api
+
+COPY data/raw/ai_agent_practice_sales.csv /app/seed/ai_agent_practice_sales.csv
+
+RUN useradd --system --uid 10001 --home-dir /nonexistent app
+USER app
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

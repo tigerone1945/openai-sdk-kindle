@@ -1,0 +1,66 @@
+# テスト(2026-10-12。PostgreSQL 17.11 / SQLAlchemy 2.1.4 / psycopg 3.3.6。値は環境で変わる)
+$ source chapters/ch13-postgresql/scripts/start_test_postgres.sh
+$ uv run --with pytest --with pytest-asyncio pytest chapters/ch13-postgresql/tests -q
+126 passed          (全章まとめて: 234 passed)
+$ env -u TEST_PG_URL uv run --with pytest --with pytest-asyncio pytest chapters/ch13-postgresql/tests -q
+87 passed, 39 skipped   ← PostgreSQLのテストは、理由つきでスキップ
+
+# 第11〜12章のSQLiteのSQLを、そのままPostgreSQLで動かすと(7構文)
+FAIL SUM(status = 'キャンセル')   : function sum(boolean) does not exist
+OK   JOIN + GROUP BY
+FAIL LIMIT ?                     : the query has 0 placeholders but 1 parameters were passed
+OK   ON CONFLICT DO NOTHING
+FAIL PRAGMA table_info           : syntax error at or near "PRAGMA"
+FAIL sqlite_master               : relation "sqlite_master" does not exist
+FAIL ORDER BY l.rowid            : column l.rowid does not exist
+(to_sql が推測した型: order_date=text / quantity=bigint / discount_rate=double precision)
+
+# 同時書き込み(SQLite vs PostgreSQL。Docker上のPostgreSQL。1回ずつの測定)
+50並行の短い書き込み(別々の注文)   SQLite 128ms 失敗0  / PostgreSQL 80ms 失敗0
+2秒かかる書き込み中に、別の10行を登録 SQLite 待ち 中央値1,803ms / PostgreSQL 23ms
+  同上、SQLiteの待ちの上限を1秒に     SQLite 10/10 失敗(database is locked)
+書き込み中の読み取り20並行           SQLite 2.8ms 失敗0 / PostgreSQL 18.9ms 失敗0
+1回の集計(直列200回)               SQLite 中央値0.22ms / PostgreSQL 1.37ms(約6倍遅い)
+
+# 接続プール:DBの再起動直後の、最初の3回の問い合わせ
+pool_pre_ping=False: ['失敗(OperationalError)', '成功(24ms)', '成功(3ms)']
+pool_pre_ping=True : ['成功(29ms)', '成功(4ms)', '成功(3ms)']
+
+# コンテナの起動(db healthy → migrate 終了 → api healthy → ui。約14秒)
+$ docker compose -f chapters/ch13-postgresql/src/compose.yaml --env-file .env up -d
+適用した版: 0001_schema, 0002_privileges
+デモデータを入れました(customers 10 / products 12 / orders 300)。
+ホストから 127.0.0.1:5432 → 繋がらない(ポートを公開していない)
+
+# api の資格情報で、実際のDBに何ができるか
+ro: SELECT orders 成功 / DELETE・INSERT・DROP・CREATE は 読み取り専用トランザクションで拒否 / SELECT review_requests は permission denied
+rw: SELECT orders 成功 / INSERT review_requests 成功 / DELETE orders は permission denied / DROP は must be owner / CREATE は permission denied for schema public
+(agent_ro / agent_rw とも rolsuper = f)
+
+# 秘密の分布(実行中のコンテナの環境変数)
+             OPENAI_API_KEY  DB_OWNER_PASSWORD  DB_RO_PASSWORD  DB_RW_PASSWORD
+db           -               あり               -               -
+migrate      -               あり               あり            あり
+api          あり            -                  あり            あり
+ui           -               -                  -               -
+イメージ(api 14層 / ui 10層)の4つの秘密の検査: すべて 見つかった数=0
+
+# 通し(本物のLLM)
+analysis: 200 completed category_sales(売上合計 28,298,695円)
+approval: 200 approval_required → approve → PostgreSQL に O0001 が登録(created_at はタイムゾーン付き)
+重複登録(承認後): 「既に登録済み」。PostgreSQL の件数は1件のまま
+範囲外: 422 out_of_scope
+
+# 再作成と障害
+down → up(ボリューム残す): 「適用した版: なし(最新です)」「デモデータは入れません」。O0001 が残る
+DB停止: /health 200 / /ready 503 database_unavailable / /analysis(新しい会話)503 database_unavailable
+DB再開(api は再起動しない): /ready が 0.9秒で 200 に戻る。/analysis も成功
+同じ会話で、DB停止中に同じ質問: 200 completed(DBに問い合わせず、会話履歴から回答した)
+
+# SQLite(第12章)からの移行
+移行前: orders 0 / review_requests 0
+$ ... migrate_sqlite_to_postgres.py /tmp/old/sales.db --timezone Asia/Tokyo
+移行して、全行を照合しました: customers 10件, products 12件, orders 300件, review_requests 2件
+移行後: 300 / 2。登録日時は 09:00(東京) → 00:00(UTC)
+移行済みの注文 O0007 を Agent から再登録 → 「既に登録済み」(件数1件)
+2回目の実行: 「移行先の customers が空ではありません。何もせずに中止します。」

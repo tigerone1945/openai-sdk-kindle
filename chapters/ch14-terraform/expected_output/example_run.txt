@@ -1,0 +1,19 @@
+# 第14章 実機の記録(2026-10-13 JST、東京リージョン、NAT なし)
+$ terraform init -backend-config=backend.hcl
+Successfully configured the backend "s3"!
+$ terraform plan -out=real.tfplan
+Plan: 29 to add, 0 to change, 0 to destroy.
+$ terraform apply real.tfplan            # 6 分 30 秒(大半は RDS の作成)
+Outputs: db_endpoint, db_master_secret_arn, ecr_api_url, ecr_ui_url, private_subnet_ids, public_subnet_ids, vpc_id
+
+# 測定
+state(S3)のサイズ: 51715 bytes(apply 直後)/ state のバージョン数 apply 直後 4 → 全作業後 5 / ロックファイル(.tflock)のバージョンも 8 個たまる(バージョニング有効のため)
+Secrets Manager から取り出した実パスワード(28 文字)が state に現れる回数: 0
+state の aws_db_instance: password=None, password_wo=None, manage_master_user_password=True, publicly_accessible=False, storage_encrypted=True
+apply 直後の plan -detailed-exitcode: 0(差分なし)
+RDS エンドポイントの名前解決: 10.0.11.225(VPC 内の私有 IP) / 手元からの 5432 接続: 不達
+Drift: VPC の Name タグを手作業で変更 → plan "0 to add, 1 to change, 0 to destroy" → 保存した plan を apply → 元に戻り、plan は差分なし
+$ terraform plan -destroy                # 29 to destroy
+$ terraform apply destroy.tfplan         # 1 分 56 秒
+destroy 後: state 0 件 / RDS 0 / NAT 0 / EIP 0 / ALB 0 / 非デフォルト VPC 0 / ECS クラスタ 0 / Secrets Manager 0
+テスト: 22 passed (約 110 秒、AWS 認証情報あり)

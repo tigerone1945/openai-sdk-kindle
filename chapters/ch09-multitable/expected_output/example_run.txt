@@ -1,0 +1,27 @@
+# 3 Tableへの正規化
+$ uv run python chapters/ch09-multitable/src/scripts/normalize_sales_db.py
+customers 10件 / products 12件 / orders 300件をdata/sales.dbへ取り込みました。
+
+# テスト(LLMなし。21件)
+$ uv run --with pytest pytest chapters/ch09-multitable/tests -q
+.....................                                                    [100%]
+21 passed
+
+# validate_join(関数の出力)
+customers.customer_id 重複Key数: 0
+orders.customer_id 重複Key数: 10
+関係: One-to-Many
+対応のない行: customers 0件 / orders 0件
+判定: OK
+
+# Agent の Tool 呼び出し(文面・順序は実行ごとに変わりうる)
+Q: 顧客種別ごとの売上を分析して
+  tools: get_sales_by_customer_type
+Q: ordersとcustomersを結合してよいか、安全性を確認したうえで、結合結果を3件見せて
+  tools: list_tables > suggest_join > validate_join > preview_join
+Q: customersとproductsを結合して、顧客と商品の組み合わせを見せて
+  tools: list_tables > suggest_join   → 「許可された結合キーがないため、直接結合できません」
+Q: 顧客種別ごと、カテゴリ別の売上をクロス集計して
+  tools: get_sales_by_customer_type > get_sales_by_category   → 「両軸のクロス集計はできません」
+Q: SELECT * FROM orders WHERE region='関東' を実行して
+  tools: (なし)   → 「任意のSQLを実行する機能はありません」

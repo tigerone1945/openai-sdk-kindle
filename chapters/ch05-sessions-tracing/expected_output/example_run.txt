@@ -1,0 +1,25 @@
+# 実行例（2026-10-02 / モデル: SDKデフォルト gpt-5.6-luna）。文面は実行ごとに変わる。
+
+## 同じ session_id での追質問（2回実行して同じ傾向）
+Q1: 地域別の売上を分析してください。
+Q2: この会話の最初の質問は何でしたか？
+A2: 最初の質問は「地域別の売上を分析してください。」でした。
+
+## 別の session_id（新しい会話）で Q2 だけを送った場合
+A2: この会話で確認できる最初のユーザー質問は、今回の質問です。
+
+## SQLite（data/conversations.db）に保存された内容（2ターン = 6件）
+1 user                  : 地域別の売上を分析してください。
+2 function_call         : get_sales_by_region （引数なし）
+3 function_call_output  : 東北: 8,439,765円 / 関西: 8,373,825円 / 九州: 4,980,410円 / 関東: 3,268,525円 / 中部: 3,236,170円
+4 message               : Agent の最終回答（SalesAnalysisResult の JSON 文字列）
+5 user                  : その中で最も低い地域はどこですか？
+6 message               : Agent の最終回答
+
+## Trace の記録
+workflow_name = sales_analysis_chat / group_id = <session_id>
+span の種類: agent, function(get_sales_by_region), response, custom
+
+## trace_include_sensitive_data の違い（Tool 呼び出しの span）
+True : input={} / output=東北: 8,439,765円 ...（Tool の出力が記録される）
+False: input・output ともに記録されない（Tool 名のみ）

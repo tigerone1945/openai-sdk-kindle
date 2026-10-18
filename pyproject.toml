@@ -1,0 +1,44 @@
+[project]
+name = "agentcore-kindle"
+version = "0.1.0"
+description = "Source code for AgentCore-Kindle: growing one AI agent into a production system"
+requires-python = ">=3.12"
+dependencies = [
+    "aws-opentelemetry-distro>=0.18.0",
+    "bedrock-agentcore>=1.24.1",
+    "fastapi>=0.143.0",
+    "httpx>=0.28.1",
+    "openai-agents>=0.22.3",
+    "opentelemetry-instrumentation-openai-agents>=0.61.0",
+    "pandas>=3.0.6",
+    "psycopg[binary]>=3.3.6",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy[asyncio]>=2.1.4",
+    "streamlit>=1.64.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+# コンテナ(第12章)で、イメージごとに必要な依存だけを入れるためのグループ。
+# 上の dependencies(本書の全章を1つの環境で動かす用)の部分集合。
+# 両者が食い違わないことは、chapters/ch12-docker/tests で検査する。
+[dependency-groups]
+api = [
+    "openai-agents>=0.22.3",
+    "pandas>=3.0.6",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.143.0",
+    "uvicorn[standard]>=0.54.0",
+    "sqlalchemy[asyncio]>=2.1.4",
+    "psycopg[binary]>=3.3.6",
+]
+observability = [
+    "aws-opentelemetry-distro>=0.18.0",
+    "opentelemetry-instrumentation-openai-agents>=0.61.0",
+]
+runtime = [
+    "bedrock-agentcore>=1.24.1",
+]
+ui = [
+    "streamlit>=1.64.0",
+    "httpx>=0.28.1",
+]

@@ -1,0 +1,48 @@
+# 実行例（2026-10-06 / モデル: SDKデフォルト gpt-5.6-luna）。文面は実行ごとに変わる。
+
+## python chapters/ch07-hitl/src/main.py（y を入力）
+承認対象: create_review_request
+引数: {'order_id': 'O0001', 'reason': '高額注文の確認'}
+承認しますか？ [y/N]: y
+注文 O0001 をレビュー依頼として登録しました。
+
+data/review_requests.csv:
+created_at,order_id,reason
+2026-10-06T16:09:55,O0001,高額注文の確認
+
+## python chapters/ch07-hitl/src/main.py（n を入力）
+承認対象: create_review_request
+引数: {'order_id': 'O0001', 'reason': '高額注文の確認'}
+承認しますか？ [y/N]: n
+レビュー依頼の登録を試みましたが、実行承認されませんでした。
+（review_requests.csv には登録されない）
+
+## 試験（承認の判断を自動で与えて実行）
+E1 承認            : 問い合わせあり → 登録された
+E2 却下            : 問い合わせあり → 登録されなかった
+E3 参照のみ        : 問い合わせなし → 自動で回答
+E4 存在しない注文  : 問い合わせあり → 承認 → Tool が検証で拒否（O9999 は登録されない）
+E5 二重登録        : 問い合わせあり → 承認 → Tool が重複を拒否（追加されない）
+E6 拒否される入力  : 問い合わせなし（逐次の Guardrail が先に止める）
+
+## data/audit_log.jsonl（E1〜E5 の抜粋）
+{"event": "approval_requested", "tool": "create_review_request", "arguments": {"order_id": "O0001", ...}}
+{"event": "approved", "tool": "create_review_request"}
+{"event": "executed", "order_id": "O0001", ...}          ← 実行された
+{"event": "approval_requested", ... "order_id": "O0002" ...}
+{"event": "rejected", "tool": "create_review_request"}   ← 却下（executed なし）
+{"event": "approval_requested", ... "order_id": "O9999" ...}
+{"event": "approved", ...}                                ← 承認されたが executed なし（Tool が拒否）
+
+## 承認の問い合わせに到達した割合（却下の設定で O0002 の登録を10回依頼）
+Instructions と docstring の両方に「承認が必要」と書く : 1 / 6
+Instructions からだけ削除                              : 5 / 6
+両方から削除（この章のコード）                          : 10 / 10
+
+## Guardrail（許可例に「注文IDを指定したレビュー依頼の登録」を追加後、各5回）
+O0001 の登録 5/5、O0002 の登録 5/5、O9999 の登録 5/5、登録＋システムプロンプト表示の依頼 0/5
+
+## Resume（別プロセスでの再開）
+プロセスA: 承認待ちで中断し RunState を保存（約12KB）。この時点で CSV への登録なし
+プロセスB: 復元 → 承認待ち [create_review_request, O0004] → approve → 再開 → 登録された
+保存された状態には質問と Tool 引数が含まれる。Instructions と API キーは含まれない。
