@@ -1,0 +1,10 @@
+{
+  "question": "カテゴリ別の売上を分析してください",
+  "analysis_type": "category_sales",
+  "result_summary": "カテゴリ別売上を比較しました。",
+  "key_findings": [
+    "IT機器が売上上位です",
+    "オフィス家具も大きな比率を占めます"
+  ],
+  "next_action": "上位カテゴリの商品別内訳を確認します"
+}
